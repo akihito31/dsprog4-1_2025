@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS forecast (
 conn.commit()
 conn.close()
 
-# --- 各都道府県分をループ ---
+
 for area_code, area_name in area_list:
     url = f"https://www.jma.go.jp/bosai/forecast/data/overview_forecast/{area_code}.json"
     try:
@@ -88,7 +88,7 @@ for area_code, area_name in area_list:
 
     conn = sqlite3.connect("../weather.db")
     cur = conn.cursor()
-    # areaテーブル登録
+    
     cur.execute("SELECT id FROM area WHERE code = ?", (area_code,))
     row = cur.fetchone()
     if row:
@@ -96,7 +96,7 @@ for area_code, area_name in area_list:
     else:
         cur.execute("INSERT INTO area (code, name) VALUES (?, ?)", (area_code, area_name))
         area_id = cur.lastrowid
-    # forecast登録
+ 
     cur.execute(
         "INSERT INTO forecast (area_id, date, text) VALUES (?, ?, ?)",
         (area_id, date, text)
@@ -104,7 +104,7 @@ for area_code, area_name in area_list:
     conn.commit()
     conn.close()
 
-# --- 表示（JOINで） ---
+
 conn = sqlite3.connect("../weather.db")
 cur = conn.cursor()
 cur.execute("""
