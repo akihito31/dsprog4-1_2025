@@ -1,5 +1,6 @@
 import flet as ft
 import requests
+import sqlite3
 
 AREA_URL = "https://www.jma.go.jp/bosai/common/const/area.json"
 WEATHER_URL = "https://www.jma.go.jp/bosai/forecast/data/forecast/{}.json"
@@ -18,6 +19,37 @@ ken_codes = {
     "福岡県": "400000", "佐賀県": "410000", "長崎県": "420000", "熊本県": "430000",
     "大分県": "440000", "宮崎県": "450000", "鹿児島県": "460100", "沖縄県": "471000"
 }
+
+# ★↓↓↓↓【追加：DB初期化＆保存関数】
+def init_db():
+    conn = sqlite3.connect('weather_app.sqlite3')
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS weather (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pref_code TEXT,
+            area_code TEXT,
+            area_name TEXT,
+            date TEXT,
+            day_index INTEGER,
+            weather TEXT,
+            t_max TEXT,
+            t_min TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+def store_weather(pref_code, area_code, area_name, date, day_index, weather, t_max, t_min):
+    conn = sqlite3.connect('weather_app.sqlite3')
+    c = conn.cursor()
+    c.execute('''
+        INSERT INTO weather (pref_code, area_code, area_name, date, day_index, weather, t_max, t_min)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (pref_code, area_code, area_name, date, day_index, weather, t_max, t_min))
+    conn.commit()
+    conn.close()
+# ★↑↑↑↑【ここまでDB機能追加】
 
 def weather_to_icon(description):
     if "晴" in description:
@@ -49,6 +81,9 @@ def extract_temp(area_code, forecast_data, day_index=0):
     return "--", "--"
 
 def main(page: ft.Page):
+    # ★DB初期化（最初に1回だけ）
+    init_db()
+
     page.title = "都道府県ごとエリア天気"
     page.bgcolor = "#e3f2fd"
     page.padding = 0
@@ -159,11 +194,8 @@ def main(page: ft.Page):
             return
 
         area_weather = {w['area']['name']: w.get('weathers',[None])[0] or "情報なし" for w in weather_areas}
-
-        # 明日分の天気も取得
         area_weather_tomorrow = {}
         for w in weather_areas:
-            # 2日分ある場合
             ws = w.get('weathers', [])
             if len(ws) >= 2:
                 area_weather_tomorrow[w['area']['name']] = ws[1]
@@ -171,6 +203,13 @@ def main(page: ft.Page):
                 area_weather_tomorrow[w['area']['name']] = "情報なし"
 
         tiles = []
+        from datetime import datetime, timedelta
+        # 予報作成日時から日付取得
+        date_today = forecast_data['reportDatetime'][:10]  # "YYYY-MM-DD"
+        # 明日
+        dt_tomorrow = datetime.strptime(date_today, "%Y-%m-%d") + timedelta(days=1)
+        date_tomorrow = dt_tomorrow.strftime("%Y-%m-%d")
+
         for i, (code, name) in enumerate(area_list):
             # --- 今日 ---
             t_max_today, t_min_today = extract_temp(code, forecast_data, day_index=0)
@@ -181,6 +220,11 @@ def main(page: ft.Page):
             t_max_tomorrow, t_min_tomorrow = extract_temp(code, forecast_data, day_index=1)
             weather_str_tomorrow = area_weather_tomorrow.get(name, "情報なし")
             icon_tomorrow = weather_to_icon(weather_str_tomorrow)
+
+            # ★↓↓↓↓DB保存処理ここで呼ぶ
+            store_weather(pref_code, code, name, date_today, 0, weather_str_today, t_max_today, t_min_today)
+            store_weather(pref_code, code, name, date_tomorrow, 1, weather_str_tomorrow, t_max_tomorrow, t_min_tomorrow)
+            # ★↑↑↑↑
 
             bgcols = ["#ffe0b2", "#e3f2fd", "#f1f8e9"]
             tile_bg = bgcols[i % len(bgcols)]
